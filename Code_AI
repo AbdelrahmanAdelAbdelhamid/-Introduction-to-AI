@@ -1,0 +1,330 @@
+"""
+Intro to AI - Lab 1
+Intelligent Agents, Environment Types, and Vacuum-Cleaner World
+
+Complete submission file.
+"""
+
+import random
+
+
+# ============================================================
+# 1. PEAS - Intelligent Agents
+# ============================================================
+
+PEAS = {
+    "Language Tutor": {
+        "Performance": "Student learning, accuracy, engagement, and progress",
+        "Environment": "Student, learning platform, lessons, exercises, and language content",
+        "Actuators": "Display text, play audio, give feedback, ask questions, provide exercises",
+        "Sensors": "Student answers, typed input, speech input, response time, and progress"
+    },
+    "Delivery Drone": {
+        "Performance": "Safe, fast, accurate, and energy-efficient delivery",
+        "Environment": "Buildings, roads, weather, obstacles, customers, and delivery locations",
+        "Actuators": "Propellers/motors, landing system, package-release mechanism",
+        "Sensors": "Camera, GPS, altitude sensor, obstacle sensors, IMU, and battery sensor"
+    }
+}
+
+
+def print_peas():
+    """Print the PEAS descriptions."""
+    print("=" * 70)
+    print("1. PEAS - INTELLIGENT AGENTS")
+    print("=" * 70)
+
+    for agent, items in PEAS.items():
+        print(f"\n{agent}:")
+        for key, value in items.items():
+            print(f"  {key:12}: {value}")
+
+
+# ============================================================
+# 2. Environment Classification
+# ============================================================
+
+ENVIRONMENT_CLASSIFICATION = {
+    "Sudoku Solver": {
+        "Observable": "Fully Observable",
+        "Agents": "Single Agent",
+        "Deterministic/Stochastic": "Deterministic",
+        "Episodic/Sequential": "Sequential",
+        "Static/Semi/Dynamic": "Static",
+        "Discrete/Continuous": "Discrete"
+    },
+    "Rock-Paper-Scissors": {
+        "Observable": "Fully Observable",
+        "Agents": "Multi-Agent",
+        "Deterministic/Stochastic": "Stochastic",
+        "Episodic/Sequential": "Episodic",
+        "Static/Semi/Dynamic": "Static",
+        "Discrete/Continuous": "Discrete"
+    },
+    "Image Classifier (Cat vs Dog)": {
+        "Observable": "Fully Observable",
+        "Agents": "Single Agent",
+        "Deterministic/Stochastic": "Deterministic",
+        "Episodic/Sequential": "Episodic",
+        "Static/Semi/Dynamic": "Static",
+        "Discrete/Continuous": "Discrete"
+    }
+}
+
+
+def print_environment_classification():
+    """Print the environment classification table."""
+    print("\n" + "=" * 110)
+    print("2. ENVIRONMENT CLASSIFICATION")
+    print("=" * 110)
+
+    headers = [
+        "Task",
+        "Observable",
+        "Agents",
+        "Deterministic/Stochastic",
+        "Episodic/Sequential",
+        "Static/Semi/Dynamic",
+        "Discrete/Continuous"
+    ]
+
+    print(" | ".join(f"{h:25}" for h in headers))
+    print("-" * 110)
+
+    for task, values in ENVIRONMENT_CLASSIFICATION.items():
+        row = [
+            task,
+            values["Observable"],
+            values["Agents"],
+            values["Deterministic/Stochastic"],
+            values["Episodic/Sequential"],
+            values["Static/Semi/Dynamic"],
+            values["Discrete/Continuous"]
+        ]
+        print(" | ".join(f"{item:25}" for item in row))
+
+
+# ============================================================
+# 3. Vacuum-Cleaner World
+# ============================================================
+
+class VacuumEnv:
+    """Environment for the two-room vacuum-cleaner world."""
+
+    def __init__(
+        self,
+        rooms=("A", "B"),
+        dirty=("A", "B"),
+        start="A",
+        p_dirty_again=0.0,
+        p_suck_fail=0.0,
+        seed=None
+    ):
+        self.rooms = list(rooms)
+        self.status = {
+            room: ("Dirty" if room in dirty else "Clean")
+            for room in self.rooms
+        }
+        self.loc = start
+        self.p_dirty_again = p_dirty_again
+        self.p_suck_fail = p_suck_fail
+        self.rng = random.Random(seed)
+
+    def percept(self):
+        """Return the current location and its cleanliness status."""
+        return self.loc, self.status[self.loc]
+
+    def step(self, action):
+        """Apply an action and return the reward."""
+        index = self.rooms.index(self.loc)
+        move_cost = 0.0
+
+        if action == "Suck":
+            if self.rng.random() >= self.p_suck_fail:
+                self.status[self.loc] = "Clean"
+
+        elif action == "Right" and index < len(self.rooms) - 1:
+            self.loc = self.rooms[index + 1]
+            move_cost = 0.5
+
+        elif action == "Left" and index > 0:
+            self.loc = self.rooms[index - 1]
+            move_cost = 0.5
+
+        elif action == "NoOp":
+            pass
+
+        for room in self.rooms:
+            if (
+                self.status[room] == "Clean"
+                and self.rng.random() < self.p_dirty_again
+            ):
+                self.status[room] = "Dirty"
+
+        clean_rooms = sum(
+            status == "Clean"
+            for status in self.status.values()
+        )
+
+        return clean_rooms - move_cost
+
+
+# ============================================================
+# 4. Agents
+# ============================================================
+
+def reflex_vacuum(percept):
+    """Simple reflex vacuum agent."""
+    location, status = percept
+
+    if status == "Dirty":
+        return "Suck"
+
+    if location == "A":
+        return "Right"
+
+    return "Left"
+
+
+class ModelBasedVacuum:
+    """Model-based vacuum agent that remembers clean rooms."""
+
+    def __init__(self, rooms=("A", "B")):
+        self.rooms = list(rooms)
+        self.known_clean = set()
+
+    def __call__(self, percept):
+        location, status = percept
+
+        if status == "Dirty":
+            self.known_clean.discard(location)
+            return "Suck"
+
+        self.known_clean.add(location)
+
+        if len(self.known_clean) == len(self.rooms):
+            return "NoOp"
+
+        return "Right" if location == "A" else "Left"
+
+
+# ============================================================
+# 5. Simulation
+# ============================================================
+
+def run(agent, env, steps=20, verbose=False):
+    """Run an agent in an environment for a fixed number of steps."""
+    total = 0.0
+
+    for t in range(steps):
+        percept = env.percept()
+        action = agent(percept)
+        reward = env.step(action)
+        total += reward
+
+        if verbose:
+            print(
+                f"t={t:2d} "
+                f"percept={percept!s:18} "
+                f"action={action:6} "
+                f"reward={reward:4.1f} "
+                f"status={env.status}"
+            )
+
+    return total
+
+
+# ============================================================
+# 6. Evaluation
+# ============================================================
+
+def evaluate(agent_factory, steps=50, runs=200, **env_kwargs):
+    """Calculate the average score over multiple runs."""
+    total_score = 0.0
+
+    for seed in range(runs):
+        environment = VacuumEnv(seed=seed, **env_kwargs)
+        total_score += run(agent_factory(), environment, steps)
+
+    return total_score / runs
+
+
+def run_vacuum_demo():
+    """Run demonstrations and compare both agents."""
+    print("\n" + "=" * 70)
+    print("3. VACUUM-CLEANER WORLD - DEMONSTRATION")
+    print("=" * 70)
+
+    print("\n=== Reflex Agent ===")
+    reflex_score = run(
+        reflex_vacuum,
+        VacuumEnv(),
+        steps=10,
+        verbose=True
+    )
+    print(f"Reflex score: {reflex_score:.2f}")
+
+    print("\n=== Model-Based Agent ===")
+    model_based_score = run(
+        ModelBasedVacuum(),
+        VacuumEnv(),
+        steps=10,
+        verbose=True
+    )
+    print(f"Model-based score: {model_based_score:.2f}")
+
+    print("\n" + "=" * 70)
+    print("4. AGENT EVALUATION")
+    print("=" * 70)
+
+    settings = {
+        "Deterministic": {},
+        "Dirt comes back (p=0.10)": {
+            "p_dirty_again": 0.10
+        },
+        "Suck fails (p=0.30)": {
+            "p_suck_fail": 0.30
+        }
+    }
+
+    print(
+        f"{'Environment':28}"
+        f"{'Reflex':>12}"
+        f"{'Model-based':>16}"
+    )
+    print("-" * 56)
+
+    for name, settings_kwargs in settings.items():
+        reflex_score = evaluate(
+            lambda: reflex_vacuum,
+            **settings_kwargs
+        )
+        model_score = evaluate(
+            lambda: ModelBasedVacuum(),
+            **settings_kwargs
+        )
+
+        print(
+            f"{name:28}"
+            f"{reflex_score:12.2f}"
+            f"{model_score:16.2f}"
+        )
+
+
+# ============================================================
+# 7. Main Program
+# ============================================================
+
+def main():
+    """Run the complete lab."""
+    print_peas()
+    print_environment_classification()
+    run_vacuum_demo()
+
+    print("\n" + "=" * 70)
+    print("LAB COMPLETED SUCCESSFULLY")
+    print("=" * 70)
+
+
+if __name__ == "__main__":
+    main()
